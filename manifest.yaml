@@ -1,0 +1,64 @@
+# 唯一事实源的全局清单：版本锚点 + 裁决链镜像 + ID 注册表 + 资产索引
+# 人工可审阅；hub publish 只读本文件，不回写（保证幂等）
+schema_version: 1
+repo: agent-rules-hub
+version: "2026.11.09-1"
+published_at: "2026-11-09T08:30:00Z"
+prev_snapshot_sha256: ""
+
+# 裁决链人可读镜像；机器唯一真源是 config/priority.yaml
+priority_order:
+  - rank: 0
+    source: session_explicit_instruction
+    label: "用户会话显式指令"
+    note: "覆盖一切；触及 L0 红线须二次确认并记审计"
+    condition: "always"
+  - rank: 1
+    source: L0_constitution
+    label: "L0 宪法"
+    note: "override: forbidden，不可被任何自动规则覆盖"
+    condition: "layer: L0 且 override: forbidden"
+  - rank: 2
+    source: L3_project_temporary
+    label: "L3 项目临时"
+    note: "status: active 且 now_utc < expires 且 scope 命中当前项目"
+    condition: "status: active 且 now_utc < expires 且 scope 命中当前项目"
+  - rank: 3
+    source: L1_stable_preference
+    label: "L1 稳定偏好"
+    note: "全局长期生效"
+    condition: "layer: L1 且 status: active"
+  - rank: 4
+    source: L2_skill_or_experience
+    label: "L2 技能 / 经验区"
+    note: "不参与覆盖比较，仅按需加载"
+    condition: "不参与覆盖比较"
+
+tie_break: [specificity_desc, updated_at_desc, priority_asc]
+
+# 中央 ID 注册表：一经分配不复用、不重排
+id_registry:
+  CONST: { next: 3, used: [CONST-0001, CONST-0002] }
+  PREF:  { next: 8, used: [PREF-0001, PREF-0002, PREF-0003, PREF-0004, PREF-0005, PREF-0006, PREF-0007] }
+  EXP:   { next: 4, used: [EXP-0001, EXP-0002, EXP-0003] }
+  PROJ:  { next: 2, used: [PROJ-example-project-0001] }
+  ADR:   { next: 2, used: [ADR-0001] }
+  SKILL: { next: 3, used: [SKILL-weekly-report, SKILL-ecosystem-research] }
+
+# 资产索引：覆盖磁盘上全部规则 / 经验 / 技能条目（ADR 属审计记录，不参与加载，故不入索引）
+asset_index:
+  - { id: CONST-0001, path: "00-constitution/CORE.md", layer: L0, asset_type: preference, status: active, version: 1, sensitivity: public }
+  - { id: CONST-0002, path: "00-constitution/SAFETY.md", layer: L0, asset_type: preference, status: active, version: 1, sensitivity: public }
+  - { id: PREF-0001, path: "10-preferences/communication.md", layer: L1, asset_type: preference, status: active, version: 1, sensitivity: public }
+  - { id: PREF-0002, path: "10-preferences/formatting.md", layer: L1, asset_type: preference, status: active, version: 1, sensitivity: public }
+  - { id: PREF-0003, path: "10-preferences/workflow.md", layer: L1, asset_type: preference, status: active, version: 1, sensitivity: public }
+  - { id: PREF-0004, path: "10-preferences/no-fluff.md", layer: L1, asset_type: preference, status: active, version: 1, sensitivity: public }
+  - { id: PREF-0005, path: "10-preferences/delivery-artifacts.md", layer: L1, asset_type: preference, status: active, version: 1, sensitivity: public }
+  - { id: PREF-0006, path: "10-preferences/acceptance-criteria.md", layer: L1, asset_type: preference, status: active, version: 1, sensitivity: public }
+  - { id: PREF-0007, path: "10-preferences/evidence-labeling.md", layer: L1, asset_type: preference, status: active, version: 1, sensitivity: public }
+  - { id: EXP-0001, path: "20-experience/EXP-0001-agents-md-nearest-wins.md", layer: experience, asset_type: experience, status: active, version: 1, sensitivity: private }
+  - { id: EXP-0002, path: "20-experience/EXP-0002-git-windows-symlink.md", layer: experience, asset_type: experience, status: active, version: 1, sensitivity: private }
+  - { id: EXP-0003, path: "20-experience/EXP-0003-github-visibility-repo-level.md", layer: experience, asset_type: experience, status: active, version: 1, sensitivity: private }
+  - { id: SKILL-weekly-report, path: "30-skills/weekly-report/SKILL.md", layer: L2, asset_type: skill, status: active, version: 1, sensitivity: public }
+  - { id: SKILL-ecosystem-research, path: "30-skills/ecosystem-research/SKILL.md", layer: L2, asset_type: skill, status: active, version: 1, sensitivity: public }
+  - { id: PROJ-example-project-0001, path: "40-projects/example-project/OVERRIDES.md", layer: L3, asset_type: preference, status: active, version: 1, sensitivity: private }

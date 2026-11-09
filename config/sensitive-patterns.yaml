@@ -1,0 +1,39 @@
+# 敏感模式清单：fail-closed，命中即阻断发布；报错只给 path / line / pattern_id，绝不回显命中内容
+schema_version: 1
+fail_closed: true
+redact_matches: true
+private_terms_file: "config/private-terms.txt"
+patterns:
+  - id: github_pat_classic
+    description: "GitHub 经典个人访问令牌"
+    regex: 'ghp_[A-Za-z0-9_]{4,}'
+  - id: github_oauth_token
+    description: "GitHub OAuth 令牌"
+    regex: 'gho_[A-Za-z0-9_]{4,}'
+  - id: github_fine_grained_token
+    description: "GitHub 细粒度令牌"
+    regex: 'github_pat_[A-Za-z0-9_]{4,}'
+  - id: generic_api_key
+    description: "常见 sk- 前缀 API 密钥"
+    regex: 'sk-[A-Za-z0-9_-]{8,}'
+  - id: aws_access_key_id
+    description: "AWS 访问密钥 ID"
+    regex: 'AKIA[0-9A-Z]{16}'
+  - id: bearer_token
+    description: "Bearer 授权头中的长令牌"
+    regex: 'Bearer[ \t]+[A-Za-z0-9._-]{12,}'
+  - id: private_key_block
+    description: "PEM 私钥块起始行"
+    regex: '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+  - id: email_address
+    description: "电子邮箱（限定常见域名后缀，避免把 @AGENTS.md 之类文本误判为邮箱）"
+    regex: '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.(com|cn|net|org|io|edu|gov|dev|ai|co|com\.cn)'
+  - id: cn_mobile_number
+    description: "中国大陆手机号"
+    regex: '(?<!\d)1[3-9]\d{9}(?!\d)'
+  - id: customer_code_labeled
+    description: "显式标注的客户代号"
+    regex: '客户代号[:：][ \t]*[A-Za-z0-9_-]{3,}'
+  - id: internal_code_labeled
+    description: "显式标注的内部代号"
+    regex: '内部代号[:：][ \t]*[A-Za-z0-9_-]{3,}'

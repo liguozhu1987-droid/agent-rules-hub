@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-rules-hub"
+version = "1.0.0"
+description = "个人 Agent 规则中枢：把规则主干编译成 5 类只读派生产物"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "PyYAML>=6.0.1,<7",
+  "jsonschema>=4.20,<5",
+  "Jinja2>=3.1.2,<4",
+]
+
+[project.scripts]
+hub = "hub.cli:main"
+
+[tool.setuptools]
+packages = ["hub", "hub.adapters"]
+
+[tool.setuptools.package-data]
+"*" = ["*.tpl", "*.json"]

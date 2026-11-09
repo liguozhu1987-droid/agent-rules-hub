@@ -1,0 +1,158 @@
+%% 02-架构设计.md §4.1 数据结构与接口类图
+%% 个人 Agent 规则中枢（agent_rules_hub）：数据模型 + 服务类 + 关系
+classDiagram
+    class Asset {
+        +str id
+        +Layer layer
+        +AssetType asset_type
+        +str source
+        +Scope scope
+        +AppliesWhen applies_when
+        +int version
+        +datetime created_at
+        +datetime updated_at
+        +datetime expires
+        +datetime review_after
+        +Status status
+        +OverridePolicy override
+        +Sensitivity sensitivity
+        +str owner
+        +str approved_by
+        +str supersedes
+        +str superseded_by
+        +str content_hash
+        +str body
+        +is_loadable(now_utc) bool
+        +specificity() int
+    }
+    class Scope {
+        +Level level
+        +list~str~ projects
+        +list~str~ agents
+        +list~str~ paths
+        +specificity_score() int
+        +matches(ctx) bool
+    }
+    class AppliesWhen {
+        +list~str~ task_types
+        +list~str~ triggers
+        +list~str~ file_globs
+        +dict time_window
+        +to_description() str
+        +to_globs() list~str~
+    }
+    class Manifest {
+        +str version
+        +datetime published_at
+        +dict priority_table
+        +dict id_registry
+        +list~str~ asset_index
+        +str prev_snapshot_sha256
+        +index() dict
+        +next_id(prefix) str
+    }
+    class LoadSet {
+        +list~Asset~ constitution
+        +list~Asset~ preferences
+        +list~Asset~ skills
+        +list~Asset~ project_overrides
+        +list~Conflict~ needs_review
+        +str core_block
+        +str core_sha256
+    }
+    class Release {
+        +str version
+        +str tag
+        +list~FileHash~ files
+        +list~str~ changed_ids
+        +list~str~ affected_agents
+        +str approved_by
+        +str prev_snapshot_sha256
+        +verify() bool
+    }
+    class FileHash {
+        +str path
+        +str sha256
+        +int size
+        +str source_id
+        +str source_version
+    }
+    class DerivedFile {
+        +str agent_id
+        +str target_path
+        +bytes content
+        +str core_sha256
+        +str generated_header
+        +is_readonly() bool
+    }
+    class Adapter {
+        <<interface>>
+        +str agent_id
+        +str target_filename
+        +bool always_on
+        +render(LoadSet, RenderContext) DerivedFile
+        +verify(DerivedFile) bool
+    }
+    class Validator {
+        +validate(Asset) Result
+        +check_duplicates(list~Asset~) list~Merge~
+        +check_state_transition(Asset, Status) Result
+    }
+    class SensitiveScanner {
+        +scan(paths) list~Finding~
+        +block_if_any(list~Finding~) Result
+    }
+    class Resolver {
+        +load_active_set(Manifest, now_utc) LoadSet
+        +resolve_conflict(a, b, ctx) Decision
+        +apply_private_overlay(LoadSet, overrides) LoadSet
+    }
+    class Projection {
+        +build_core_block(LoadSet) str
+        +render_all(LoadSet) list~DerivedFile~
+        +assert_hash_equality(list~DerivedFile~) Result
+    }
+    class Publisher {
+        +next_version() str
+        +snapshot(list~DerivedFile~) Release
+        +write_adr(Change) str
+        +tag(Release) str
+        +export_public(Release) list~str~
+    }
+    class Syncer {
+        +plan(Release) Diff
+        +apply(Diff, confirmations) Result
+        +detect_drift() list~Drift~
+        +save_last_good(Release) Result
+        +offline_fallback() LoadSet
+    }
+    class Rollback {
+        +to_version(str, reason) Release
+    }
+    class Auditor {
+        +record(event) str
+        +hash_chain(Release) str
+    }
+
+    Asset "1" *-- "1" Scope : 组合
+    Asset "1" *-- "1" AppliesWhen : 组合
+    Asset "0..1" --> "0..1" Asset : supersedes / superseded_by
+    Manifest "1" o-- "0..*" Asset : 索引注册
+    LoadSet "1" o-- "0..*" Asset : 加载集合
+    Release "1" *-- "0..*" FileHash : 快照
+    Validator ..> Asset : 校验
+    SensitiveScanner ..> DerivedFile : 发布前扫描
+    Resolver ..> Manifest : 读取优先级表
+    Resolver --> LoadSet : 产出
+    Resolver ..> Asset : 裁决
+    Projection --> LoadSet : 消费 core_block
+    Projection "1" --> "1..*" Adapter : Strategy 分派
+    Adapter ..> DerivedFile : 产出
+    Publisher --> Projection : 调用
+    Publisher --> Release : 生成
+    Publisher ..> Auditor : 记 ADR 与哈希链
+    Syncer --> Release : 消费快照
+    Syncer ..> DerivedFile : 落盘与漂移检测
+    Rollback --> Release : 读取历史快照
+    Rollback --> Publisher : 触发重新投影
+    Auditor ..> Release : prev_snapshot_sha256

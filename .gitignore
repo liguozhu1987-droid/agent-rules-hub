@@ -1,0 +1,28 @@
+# 本机私有覆盖层：目录内容不入库，仅保留说明文件
+99-private/*
+!99-private/README.md
+
+# 设备差异与本地状态
+config/hub.local.yaml
+config/private-terms.txt
+.state/
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# 编辑器与系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 说明：90-adapters/ 与 audit/releases/ 属于生成物但必须入库（可复核、可回滚），故不排除。

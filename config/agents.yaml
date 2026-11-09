@@ -1,0 +1,115 @@
+# Agent 注册表：新增 Agent 只需加一个条目 + 一个 adapter 文件，主干逻辑零改动
+# target_path 为相对仓库根的路径模板；{name} / {id} 由生成器按条目替换
+schema_version: 1
+agents:
+  - id: agents_md
+    display_name: "通用 AGENTS.md（Codex / 多数 harness）"
+    target_filename: AGENTS.md
+    target_path: "90-adapters/AGENTS.md"
+    root_target_path: "AGENTS.md"
+    always_on: true
+    mode: inline
+    embeds_core: true
+    frontmatter:
+      style: none
+      fields: []
+      mapping_rules: {}
+    projection:
+      l0: true
+      l1: true
+      l3: false
+      l2: index_only
+      experience: none
+    verify: "新开会话询问已加载规则 ID 与版本，应与 manifest.yaml 一致"
+
+  - id: claude
+    display_name: "Claude Code"
+    target_filename: CLAUDE.md
+    target_path: "90-adapters/CLAUDE.md"
+    rules_target_path: "90-adapters/claude/rules/{id}.md"
+    always_on: true
+    mode: pointer
+    embeds_core: false
+    pointer_target: "@AGENTS.md"
+    pointer_unverified: true
+    frontmatter:
+      style: none
+      fields: []
+      mapping_rules:
+        paths: "scope.paths"
+    projection:
+      l0: pointer
+      l1: pointer
+      l3: per_topic
+      l2: index_only
+      experience: none
+    verify: "指针模式需本机实测 @ 导入是否生效；不生效则切 inline 模式"
+
+  - id: cursor
+    display_name: "Cursor"
+    target_filename: "*.mdc"
+    target_path: "90-adapters/cursor/rules/{name}.mdc"
+    core_target_path: "90-adapters/cursor/rules/core.mdc"
+    always_on: false
+    mode: per_topic
+    embeds_core: true
+    frontmatter:
+      style: yaml
+      fields: [description, globs, alwaysApply]
+      mapping_rules:
+        description: "当涉及 {applies_when.task_types} 且命中 {applies_when.triggers} 时使用（id: {id}）"
+        globs: "applies_when.file_globs ∪ scope.paths；为空则省略该字段"
+        alwaysApply: "layer in [L0, L1] and scope.level == global 时为 true，否则 false"
+      l3_extra_globs: "40-projects/{project}/**"
+    projection:
+      l0: core
+      l1: per_topic
+      l3: per_topic
+      l2: index_only
+      experience: none
+    verify: "打开命中 globs 的文件，确认 .mdc 规则被引用；globs / alwaysApply 语义需实测"
+
+  - id: copilot
+    display_name: "GitHub Copilot"
+    target_filename: copilot-instructions.md
+    target_path: "90-adapters/copilot/copilot-instructions.md"
+    instructions_target_path: "90-adapters/copilot/instructions/{id}.instructions.md"
+    always_on: true
+    mode: inline_plus_per_topic
+    embeds_core: true
+    frontmatter:
+      style: yaml
+      fields: [name, description, applyTo]
+      mapping_rules:
+        name: "id"
+        description: "同 cursor.description"
+        applyTo: "scope.paths ∪ applies_when.file_globs 转 glob 语法；为空填 **"
+      l3_extra_apply_to: "40-projects/{project}/**"
+    projection:
+      l0: core
+      l1: per_topic
+      l3: per_topic
+      l2: index_only
+      experience: none
+    verify: "打开 applyTo 命中的路径，确认指令进入上下文；applyTo 语法需实测"
+
+  - id: workbuddy
+    display_name: "WorkBuddy"
+    target_filename: MEMORY.md
+    target_path: "90-adapters/workbuddy/MEMORY.md"
+    skills_target_path: "90-adapters/workbuddy/skills/{name}/SKILL.md"
+    skills_references_path: "90-adapters/workbuddy/skills/{name}/references/"
+    always_on: true
+    mode: inline_plus_full_skills
+    embeds_core: true
+    frontmatter:
+      style: none
+      fields: []
+      mapping_rules: {}
+    projection:
+      l0: true
+      l1: true
+      l3: false
+      l2: full_copy
+      experience: none
+    verify: "用户级目录真实路径未经官方核实，需实测；技能应只暴露 name + description 索引"

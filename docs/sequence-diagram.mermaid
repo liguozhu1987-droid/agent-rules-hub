@@ -1,0 +1,106 @@
+%% 02-架构设计.md §6 端到端综合时序图（主流程压缩视图）
+%% 6 张细化分图（评审入库 / 版本化发布与投影 / 设备同步与差异确认 / 回滚 / 离线降级 / 会话启动加载与冲突裁决）见 02-架构设计.md 第 6 章。
+%% 本图覆盖：沉淀 → 四步评审 → 版本化发布 → 5 类投影 → 幂等同步（含离线降级）→ 会话加载与裁决 → 回滚。
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant C as hub CLI
+    participant V as Validator / SensitiveScanner
+    participant R as Resolver
+    participant P as Projection
+    participant AD as Adapters(5 类)
+    participant PB as Publisher
+    participant AU as Auditor
+    participant G as Git / GitHub Actions
+    participant ST as .state 本地状态
+    participant T as 各 Agent 目标目录
+    participant AG as 执行任务的 Agent
+
+    rect rgb(232, 240, 254)
+    Note over U,G: ① 沉淀与评审入库（R09 / R08 / R02 / R05）
+    U->>C: hub capture 写入 drafts/（一次踩坑 / 一次纠正）
+    C->>V: 分类 + schema 校验 → 查重(content_hash) → 敏感检查
+    V-->>C: fail-closed 结果（缺字段 / 重复 / 敏感命中即阻断）
+    C-->>U: 展示评审摘要，请求人工确认
+    U->>C: 确认（approved_by + UTC 时间）
+    C->>AU: 生成 ADR（四步结论 + supersedes 链路）
+    C->>G: 合入主干 00~40 / 更新 manifest.id_registry
+    end
+
+    rect rgb(230, 244, 234)
+    Note over U,G: ② 版本化发布与投影（R03 / R04 / R06 / R08）
+    U->>C: hub publish
+    C->>V: 全量二次校验（schema / 状态机 / ID / 查重 / 敏感）
+    C->>R: load_active_set(manifest, now_utc)
+    R-->>C: LoadSet（仅 active 且未过期；无法裁决 → needs_review + 提问）
+    C->>P: build_core_block(LoadSet) —— 内存中唯一一次
+    P-->>C: core_block + core_sha256
+    loop 遍历 config/agents.yaml 每个 Agent
+        P->>AD: render(LoadSet, ctx)
+        AD-->>P: DerivedFile（统一只读 header + 目标约定文件名）
+    end
+    P->>P: assert 所有常驻视图 core_sha256 相等
+    P-->>C: 原子写入 90-adapters/** 全部派生产物
+    C->>PB: next_version() → 2026.11.09-N
+    PB->>PB: 计算 file_sha256 / chain_sha256 → snapshot.json
+    PB->>AU: 汇总 ADR → CHANGELOG + audit/ledger.jsonl
+    PB->>G: 打 annotated tag rules/<version>
+    G->>G: CI：幂等复现 + 跨视图哈希断言 + 独立敏感扫描
+    G->>G: 生成 --scope public 子集 → 推 agent-rules-hub-public
+    PB-->>U: 发布报告（版本 / 改了哪几条 / 谁确认 / 影响哪些 Agent）
+    end
+
+    rect rgb(254, 247, 224)
+    Note over U,T: ③ 设备同步、差异确认与离线降级（R15 / R17 / R11）
+    C->>G: fetch 最新版本与 snapshot.json
+    alt 网络不可用
+        G--xC: 超时
+        C->>ST: 读 sync-state.json + last-good/
+        ST-->>C: {version, synced_at_utc, snapshot_sha256}
+        C->>T: 落盘 last-good + 头部追加 OFFLINE-SNAPSHOT
+        C-->>U: 显式提示「离线使用版本 X，最后同步于 Y，可能已过期」
+    else 网络可用
+        G-->>C: 目标版本与快照
+        C->>T: 读取已落盘文件 sha256
+        T-->>C: 本地哈希集合
+        C-->>U: 按规则 ID 的增量 diff + 漂移项标红
+        U->>C: 逐条 accept / reject（默认不自动应用）
+        C->>T: 临时目录渲染 → 原子替换 → 复核 sha256
+        C->>ST: 更新 sync-state.json，复制 last-good/
+        C-->>U: 「本地版本 A → 主干版本 B」变化报告 + affected_agents
+        C->>C: hub status：逐 Agent 列出 版本/一致性/上次同步时间/漂移
+    end
+    end
+
+    rect rgb(243, 229, 245)
+    Note over AG,AU: ④ 会话启动加载与冲突裁决（R10 / R13 / PRD 6.2）
+    AG->>T: 会话启动读取常驻视图（L0 + 裁决链 + L1 + 版本头）
+    T-->>AG: core_block（唯一、已标注来源版本）
+    AG->>T: 启动仅加载技能 name + description（渐进式披露）
+    T-->>AG: 技能索引；任务匹配才读完整 SKILL.md
+    AG->>R: 冲突裁决请求 (a, b, ctx)
+    R->>R: rank 0→4 + specificity / updated_at / priority
+    alt 可裁决
+        R-->>AG: 胜出 ID；败者标 deprecated
+    else 无法裁决
+        R-->>AG: needs_review
+        AG->>U: 暂停动作，列出冲突项并提问（禁止自行取舍 / 编造）
+        U-->>AG: 显式指令（rank 0；触及 L0 红线须二次确认）
+    end
+    AG->>AU: 记录裁决（命中 ID / 版本 / 处置结果）
+    AG-->>U: 交付附「本次加载/命中的规则 ID 与版本清单」
+    end
+
+    rect rgb(252, 232, 232)
+    Note over U,G: ⑤ 一键回滚（R07 / C3）
+    U->>C: hub rollback 2026.11.08-2 --reason "..."
+    C->>PB: 读取目标 snapshot.json + 校验 chain_sha256
+    PB-->>C: 快照完整（校验失败即中止）
+    C->>G: 恢复主干 00~40 到该版本提交（保留私有层）
+    C->>R: 重新 load_active_set
+    R-->>P: LoadSet → 重新生成全部投影（禁止直接复制旧产物）
+    P-->>C: 产物 sha256 与目标快照逐一相等
+    C->>AU: 写回滚 ADR（原因 / 版本 / 操作人 / UTC）
+    C->>T: 触发全端 sync --plan → 确认 → apply
+    C-->>U: 回滚完成 + 全端一致性校验报告（避免版本错配）
+    end
